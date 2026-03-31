@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EM Resident Feedback Survey</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #1a1a2e; line-height: 1.6; }
+    .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+    .header { background: linear-gradient(135deg, #003366, #004d99); color: #fff; padding: 32px 24px; border-radius: 12px; margin-bottom: 24px; text-align: center; }
+    .header h1 { font-size: 1.5rem; margin-bottom: 4px; }
+    .header p { opacity: 0.85; font-size: 0.9rem; }
+    .instructions { background: #e8f0fe; border-left: 4px solid #004d99; padding: 16px; border-radius: 6px; margin-bottom: 24px; font-size: 0.9rem; }
+    .question-card { background: #fff; border-radius: 10px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .question-card .q-number { display: inline-block; background: #004d99; color: #fff; border-radius: 50%; width: 28px; height: 28px; text-align: center; line-height: 28px; font-size: 0.85rem; font-weight: 600; margin-right: 8px; }
+    .question-card .q-title { font-weight: 700; font-size: 1.05rem; display: inline; }
+    .question-card .q-text { margin-top: 8px; font-size: 0.9rem; color: #444; }
+    .scale-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 16px; }
+    .scale-option { position: relative; }
+    .scale-option input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .scale-option label { display: block; border: 2px solid #dde; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; height: 100%; }
+    .scale-option label:hover { border-color: #004d99; background: #f0f6ff; }
+    .scale-option input:checked + label { border-color: #004d99; background: #e0edff; box-shadow: 0 0 0 1px #004d99; }
+    .scale-option .score { font-weight: 700; color: #004d99; font-size: 1rem; }
+    .scale-option .sublabel { font-size: 0.78rem; color: #666; margin-top: 4px; font-style: italic; }
+    textarea { width: 100%; min-height: 120px; border: 2px solid #dde; border-radius: 8px; padding: 12px; font-family: inherit; font-size: 0.95rem; resize: vertical; margin-top: 12px; }
+    textarea:focus { outline: none; border-color: #004d99; }
+    .name-section { background: #fff; border-radius: 10px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .name-section label { font-weight: 700; font-size: 1.05rem; }
+    .name-section input { width: 100%; border: 2px solid #dde; border-radius: 8px; padding: 12px; font-size: 1rem; margin-top: 10px; }
+    .name-section input:focus { outline: none; border-color: #004d99; }
+    .submit-btn { display: block; width: 100%; background: #004d99; color: #fff; border: none; padding: 16px; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .submit-btn:hover { background: #003366; }
+    .required-star { color: #c0392b; }
+    .error-msg { color: #c0392b; font-size: 0.85rem; display: none; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Faculty Evaluation of Resident</h1>
+      <p>Emergency Medicine Elective &mdash; End of Shift Feedback</p>
+    </div>
+
+    <div class="instructions">
+      <strong>Instructions:</strong> E&M = Evaluation and Management. A score of 1 is not a deficiency; early interns will generally score 1-2. Please complete this form at the end of the shift.
+    </div>
+
+    <form id="surveyForm" action="/submit" method="POST" onsubmit="return validateForm()">
+
+      <div class="name-section">
+        <label>Resident Name <span class="required-star">*</span></label>
+        <input type="text" name="resident_name" placeholder="Enter resident's full name" required>
+        <div class="error-msg" id="err-name">Please enter the resident's name.</div>
+      </div>
+
+      {% for q in questions %}
+      <div class="question-card" id="card-{{ q.id }}">
+        <span class="q-number">{{ q.number }}</span>
+        <span class="q-title">{{ q.title }} <span class="required-star">*</span></span>
+        <div class="q-text">{{ q.text }}</div>
+
+        {% if q.type == 'scale' %}
+        <div class="scale-grid">
+          {% for opt in scale_options %}
+          <div class="scale-option">
+            <input type="radio" name="{{ q.id }}" id="{{ q.id }}_{{ opt.value }}" value="{{ opt.value }}" required>
+            <label for="{{ q.id }}_{{ opt.value }}">
+              <div class="score">{% if opt.value != 'N/A' %}Level {{ opt.value }}{% else %}N/A{% endif %}</div>
+              <div>{{ opt.label }}</div>
+              {% if opt.sublabel %}<div class="sublabel">{{ opt.sublabel }}</div>{% endif %}
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        {% elif q.type == 'textarea' %}
+        <textarea name="{{ q.id }}" placeholder="Enter your feedback here..." required></textarea>
+        {% endif %}
+        <div class="error-msg" id="err-{{ q.id }}">This field is required.</div>
+      </div>
+      {% endfor %}
+
+      <button type="submit" class="submit-btn">Submit Evaluation</button>
+    </form>
+  </div>
+
+  <script>
+    function validateForm() {
+      let valid = true;
+      document.querySelectorAll('.error-msg').forEach(e => e.style.display = 'none');
+
+      // Check radio groups
+      ['q2','q3','q4','q5'].forEach(id => {
+        if (!document.querySelector(`input[name="${id}"]:checked`)) {
+          document.getElementById(`err-${id}`).style.display = 'block';
+          valid = false;
+        }
+      });
+
+      // Check textarea
+      if (!document.querySelector('textarea[name="q1"]').value.trim()) {
+        document.getElementById('err-q1').style.display = 'block';
+        valid = false;
+      }
+
+      // Check name
+      if (!document.querySelector('input[name="resident_name"]').value.trim()) {
+        document.getElementById('err-name').style.display = 'block';
+        valid = false;
+      }
+
+      if (!valid) {
+        document.querySelector('.error-msg[style*="block"]').closest('.question-card, .name-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return valid;
+    }
+  </script>
+</body>
+</html>

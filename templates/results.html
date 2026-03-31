@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Survey Results</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #1a1a2e; line-height: 1.6; }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    .header { background: linear-gradient(135deg, #003366, #004d99); color: #fff; padding: 32px 24px; border-radius: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .header h1 { font-size: 1.4rem; }
+    .header .actions a { background: rgba(255,255,255,0.2); color: #fff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; }
+    .header .actions a:hover { background: rgba(255,255,255,0.3); }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: #fff; border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .stat-card .num { font-size: 2rem; font-weight: 700; color: #004d99; }
+    .stat-card .lbl { font-size: 0.8rem; color: #666; }
+    .response-card { background: #fff; border-radius: 10px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .response-card .meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+    .response-card .resident-name { font-weight: 700; font-size: 1.1rem; color: #003366; }
+    .response-card .timestamp { font-size: 0.8rem; color: #888; }
+    .scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .score-item { background: #f0f6ff; border-radius: 8px; padding: 12px; }
+    .score-item .category { font-size: 0.8rem; color: #555; font-weight: 600; }
+    .score-item .value { font-size: 1.3rem; font-weight: 700; color: #004d99; }
+    .feedback-text { background: #fafafa; border-left: 3px solid #004d99; padding: 12px 16px; border-radius: 4px; font-size: 0.9rem; color: #333; white-space: pre-wrap; }
+    .empty { text-align: center; padding: 60px 20px; color: #888; }
+    .filter-bar { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .filter-bar input { width: 100%; border: 2px solid #dde; border-radius: 8px; padding: 10px; font-size: 0.95rem; }
+    .filter-bar input:focus { outline: none; border-color: #004d99; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Resident Feedback Results</h1>
+      <div class="actions">
+        <a href="/results/export">Export CSV</a>
+      </div>
+    </div>
+
+    {% set numeric_responses = [] %}
+    {% for r in responses %}
+      {% for q in questions if q.type == 'scale' %}
+        {% if r.get(q.id, 'N/A') != 'N/A' %}
+          {% if numeric_responses.append(r.get(q.id)|int) %}{% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="num">{{ responses|length }}</div>
+        <div class="lbl">Total Responses</div>
+      </div>
+      {% for q in questions if q.type == 'scale' %}
+      {% set vals = [] %}
+      {% for r in responses %}
+        {% if r.get(q.id, 'N/A') != 'N/A' %}
+          {% if vals.append(r.get(q.id)|int) %}{% endif %}
+        {% endif %}
+      {% endfor %}
+      <div class="stat-card">
+        <div class="num">{% if vals %}{{ '%.1f'|format(vals|sum / vals|length) }}{% else %}-{% endif %}</div>
+        <div class="lbl">Avg {{ q.title.split('/')[0].strip()[:18] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="filter-bar">
+      <input type="text" id="filterInput" placeholder="Filter by resident name..." oninput="filterResults()">
+    </div>
+
+    {% if not responses %}
+    <div class="empty">
+      <h2>No responses yet</h2>
+      <p>Share the survey link with attendings to start collecting feedback.</p>
+    </div>
+    {% endif %}
+
+    {% for r in responses|reverse %}
+    <div class="response-card" data-name="{{ r.get('resident_name', '')|lower }}">
+      <div class="meta">
+        <span class="resident-name">{{ r.get('resident_name', 'Unknown') }}</span>
+        <span class="timestamp">{{ r.get('submitted_at', '')[:16].replace('T', ' ') }}</span>
+      </div>
+      <div class="scores">
+        {% for q in questions if q.type == 'scale' %}
+        <div class="score-item">
+          <div class="category">{{ q.title }}</div>
+          <div class="value">{% if r.get(q.id, 'N/A') != 'N/A' %}Level {{ r.get(q.id) }}{% else %}N/A{% endif %}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if r.get('q1') %}
+      <div class="feedback-text">{{ r.get('q1') }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <script>
+    function filterResults() {
+      const q = document.getElementById('filterInput').value.toLowerCase();
+      document.querySelectorAll('.response-card').forEach(card => {
+        card.style.display = card.dataset.name.includes(q) ? '' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>
