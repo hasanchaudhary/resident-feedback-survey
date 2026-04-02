@@ -29,6 +29,18 @@
     .filter-bar { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     .filter-bar input { width: 100%; border: 2px solid #dde; border-radius: 8px; padding: 10px; font-size: 0.95rem; }
     .filter-bar input:focus { outline: none; border-color: #004d99; }
+    .delete-btn { background: #dc3545; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; }
+    .delete-btn:hover { background: #c82333; }
+    .delete-all-btn { background: #dc3545; color: #fff; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.9rem; border: none; cursor: pointer; }
+    .delete-all-btn:hover { background: #c82333; }
+    .confirm-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+    .confirm-modal.active { display: flex; }
+    .confirm-box { background: #fff; border-radius: 12px; padding: 32px; max-width: 400px; text-align: center; }
+    .confirm-box h3 { margin-bottom: 12px; }
+    .confirm-box p { margin-bottom: 20px; color: #666; }
+    .confirm-box .btn-group { display: flex; gap: 12px; justify-content: center; }
+    .confirm-box .btn-cancel { background: #ddd; color: #333; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; }
+    .confirm-box .btn-confirm { background: #dc3545; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -37,6 +49,9 @@
       <h1>Resident Feedback Results</h1>
       <div class="actions">
         <a href="/results/export">Export CSV</a>
+        {% if responses %}
+        <button class="delete-all-btn" onclick="showDeleteAll()">Delete All</button>
+        {% endif %}
       </div>
     </div>
 
@@ -83,7 +98,12 @@
     <div class="response-card" data-name="{{ r.get('resident_name', '')|lower }}">
       <div class="meta">
         <span class="resident-name">{{ r.get('resident_name', 'Unknown') }}</span>
-        <span class="timestamp">{{ r.get('submitted_at', '')[:16].replace('T', ' ') }}</span>
+        <div>
+          <span class="timestamp">{{ r.get('submitted_at', '')[:16].replace('T', ' ') }}</span>
+          <form method="POST" action="/results/delete/{{ responses|length - 1 - loop.index0 }}" style="display:inline; margin-left:8px;">
+            <button type="button" class="delete-btn" onclick="confirmDelete(this)">Delete</button>
+          </form>
+        </div>
       </div>
       <div class="scores">
         {% for q in questions if q.type == 'scale' %}
@@ -100,12 +120,41 @@
     {% endfor %}
   </div>
 
+  <div class="confirm-modal" id="confirmModal">
+    <div class="confirm-box">
+      <h3 id="confirmTitle">Delete this response?</h3>
+      <p id="confirmMsg">This action cannot be undone.</p>
+      <div class="btn-group">
+        <button class="btn-cancel" onclick="hideModal()">Cancel</button>
+        <form id="confirmForm" method="POST">
+          <button type="submit" class="btn-confirm">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <script>
     function filterResults() {
       const q = document.getElementById('filterInput').value.toLowerCase();
       document.querySelectorAll('.response-card').forEach(card => {
         card.style.display = card.dataset.name.includes(q) ? '' : 'none';
       });
+    }
+    function confirmDelete(btn) {
+      const form = btn.closest('form');
+      document.getElementById('confirmTitle').textContent = 'Delete this response?';
+      document.getElementById('confirmMsg').textContent = 'This action cannot be undone.';
+      document.getElementById('confirmForm').action = form.action;
+      document.getElementById('confirmModal').classList.add('active');
+    }
+    function showDeleteAll() {
+      document.getElementById('confirmTitle').textContent = 'Delete ALL responses?';
+      document.getElementById('confirmMsg').textContent = 'This will permanently remove all survey data.';
+      document.getElementById('confirmForm').action = '/results/delete-all';
+      document.getElementById('confirmModal').classList.add('active');
+    }
+    function hideModal() {
+      document.getElementById('confirmModal').classList.remove('active');
     }
   </script>
 </body>

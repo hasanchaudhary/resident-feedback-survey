@@ -136,6 +136,25 @@ def export_csv():
     )
 
 
+@app.route("/results/delete/<int:index>", methods=["POST"])
+@require_auth
+def delete_response(index):
+    responses = load_responses()
+    if 0 <= index < len(responses):
+        responses.pop(index)
+        with open(DATA_FILE, "w") as f:
+            json.dump(responses, f, indent=2)
+    return redirect("/results")
+
+
+@app.route("/results/delete-all", methods=["POST"])
+@require_auth
+def delete_all_responses():
+    with open(DATA_FILE, "w") as f:
+        json.dump([], f, indent=2)
+    return redirect("/results")
+
+
 @app.route("/qr")
 def qr_code():
     """Generate QR code pointing to the public tunnel URL or local URL."""
