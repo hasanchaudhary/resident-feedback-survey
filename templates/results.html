@@ -100,7 +100,7 @@
         <span class="resident-name">{{ r.get('resident_name', 'Unknown') }}</span>
         <div>
           <span class="timestamp">{{ r.get('submitted_at', '')[:16].replace('T', ' ') }}</span>
-          <form method="POST" action="/results/delete/{{ responses|length - 1 - loop.index0 }}" style="display:inline; margin-left:8px;">
+          <form method="POST" action="/results/delete/{{ r.get('id') }}" style="display:inline; margin-left:8px;">
             <button type="button" class="delete-btn" onclick="confirmDelete(this)">Delete</button>
           </form>
         </div>

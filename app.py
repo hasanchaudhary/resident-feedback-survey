@@ -7,13 +7,13 @@ from datetime import datetime
 from functools import wraps
 
 import qrcode
-from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
+from flask import Flask, render_template, request, redirect, jsonify, Response
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
+app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
-DATA_FILE = os.path.join(os.path.dirname(__file__), "data", "responses.json")
-ADMIN_PASSWORD = "emermed2026"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "changeme")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 SCALE_OPTIONS = [
     {"value": "1", "label": "Performs basic tasks and E&M of common disease at very early level", "sublabel": "Needs continual guidance"},
@@ -62,20 +62,114 @@ QUESTIONS = [
     },
 ]
 
+# ---------------------------------------------------------------------------
+# Database layer — PostgreSQL in production, JSON file for local development
+# ---------------------------------------------------------------------------
 
-def load_responses():
-    if not os.path.exists(DATA_FILE):
-        return []
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+if DATABASE_URL:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+
+    def get_db():
+        return psycopg2.connect(DATABASE_URL)
+
+    def init_db():
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS responses (
+                id SERIAL PRIMARY KEY,
+                resident_name TEXT,
+                q1 TEXT,
+                q2 TEXT,
+                q3 TEXT,
+                q4 TEXT,
+                q5 TEXT,
+                submitted_at TEXT
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    def load_responses():
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM responses ORDER BY submitted_at ASC")
+        rows = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return rows
+
+    def save_response(entry):
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO responses (resident_name, q1, q2, q3, q4, q5, submitted_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (entry.get("resident_name", ""), entry.get("q1", ""), entry.get("q2", ""),
+             entry.get("q3", ""), entry.get("q4", ""), entry.get("q5", ""), entry.get("submitted_at", "")),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    def delete_response_by_id(response_id):
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM responses WHERE id = %s", (response_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    def delete_all_responses():
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM responses")
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    init_db()
+
+else:
+    # Local JSON fallback
+    DATA_FILE = os.path.join(os.path.dirname(__file__), "data", "responses.json")
+    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+
+    def load_responses():
+        if not os.path.exists(DATA_FILE):
+            return []
+        with open(DATA_FILE) as f:
+            rows = json.load(f)
+        for i, r in enumerate(rows):
+            r.setdefault("id", i)
+        return rows
+
+    def save_response(entry):
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE) as f:
+                rows = json.load(f)
+        else:
+            rows = []
+        clean = {k: v for k, v in entry.items() if k != "id"}
+        rows.append(clean)
+        with open(DATA_FILE, "w") as f:
+            json.dump(rows, f, indent=2)
+
+    def delete_response_by_id(response_id):
+        rows = load_responses()
+        rows = [{k: v for k, v in r.items() if k != "id"} for r in rows if r.get("id") != response_id]
+        with open(DATA_FILE, "w") as f:
+            json.dump(rows, f, indent=2)
+
+    def delete_all_responses():
+        with open(DATA_FILE, "w") as f:
+            json.dump([], f, indent=2)
 
 
-def save_response(entry):
-    responses = load_responses()
-    responses.append(entry)
-    with open(DATA_FILE, "w") as f:
-        json.dump(responses, f, indent=2)
-
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
 
 def require_auth(f):
     @wraps(f)
@@ -90,6 +184,10 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated
 
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @app.route("/")
 def survey():
@@ -126,38 +224,31 @@ def export_csv():
     headers = ["submitted_at", "resident_name", "q2", "q3", "q4", "q5", "q1"]
     lines = [",".join(headers)]
     for r in responses:
-        row = [r.get(h, "").replace('"', '""') for h in headers]
+        row = [str(r.get(h, "")).replace('"', '""') for h in headers]
         lines.append(",".join(f'"{v}"' for v in row))
-    csv_text = "\n".join(lines)
     return Response(
-        csv_text,
+        "\n".join(lines),
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=resident_feedback.csv"},
     )
 
 
-@app.route("/results/delete/<int:index>", methods=["POST"])
+@app.route("/results/delete/<int:response_id>", methods=["POST"])
 @require_auth
-def delete_response(index):
-    responses = load_responses()
-    if 0 <= index < len(responses):
-        responses.pop(index)
-        with open(DATA_FILE, "w") as f:
-            json.dump(responses, f, indent=2)
+def delete_response(response_id):
+    delete_response_by_id(response_id)
     return redirect("/results")
 
 
 @app.route("/results/delete-all", methods=["POST"])
 @require_auth
-def delete_all_responses():
-    with open(DATA_FILE, "w") as f:
-        json.dump([], f, indent=2)
+def delete_all():
+    delete_all_responses()
     return redirect("/results")
 
 
 @app.route("/qr")
 def qr_code():
-    """Generate QR code pointing to the public tunnel URL or local URL."""
     base = request.host_url.rstrip("/")
     img = qrcode.make(base)
     buf = io.BytesIO()
@@ -166,8 +257,6 @@ def qr_code():
     encoded = base64.b64encode(buf.read()).decode()
     return render_template("qr.html", qr_data=encoded, url=base)
 
-
-os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
